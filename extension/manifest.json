@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "TezosX Relayer",
+  "version": "0.1.0",
+  "description": "EIP-1193 provider bridging Ethereum dApps to Tezos via Temple Wallet",
+
+  "permissions": ["storage"],
+
+  "host_permissions": [
+    "https://demo.txpark.nomadic-labs.com/*",
+    "https://www.4byte.directory/*"
+  ],
+
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TezosX Relayer"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/injected.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
