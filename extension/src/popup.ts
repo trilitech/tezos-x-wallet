@@ -93,4 +93,8 @@ function disconnect(origin: string): void {
 
 // ── Démarrage ────────────────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', load);
+document.addEventListener('DOMContentLoaded', () => {
+  const { version } = chrome.runtime.getManifest();
+  $('version').textContent = `v${version}`;
+  load();
+});

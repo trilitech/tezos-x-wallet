@@ -1,21 +1,11 @@
 import type { SessionUpdateMessage, BackgroundRequest } from './messages.js';
 
-// ── 1. Injection du relayer dans le monde MAIN de la page ─────────────────────
+// ── Pont page → background (notifications de session) ────────────────────────
 //
-// On injecte injected.js via un <script> tag afin qu'il s'exécute dans le
-// contexte JavaScript de la page (même window que le dApp), ce qui est
-// nécessaire pour poser window.ethereum.
-
-const script = document.createElement('script');
-script.src = chrome.runtime.getURL('dist/injected.js');
-(document.head ?? document.documentElement).prepend(script);
-script.addEventListener('load', () => script.remove(), { once: true });
-
-// ── 2. Pont page → background (notifications de session) ─────────────────────
-//
-// On écoute uniquement les messages de type TEZOSX_SESSION_UPDATE émis par
-// injected.ts. On ne relaie PAS d'appels RPC : la logique métier s'exécute
-// entièrement dans le script injecté.
+// injected.ts est désormais déclaré world:"MAIN" dans le manifest : le
+// navigateur l'injecte lui-même de façon synchrone, avant tout script de la
+// page. Ce content script (world:"ISOLATED") se charge uniquement de relayer
+// les changements de session vers le background pour affichage dans le popup.
 
 window.addEventListener('message', (event: MessageEvent) => {
   if (event.source !== window) return;
