@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 280" width="200" height="280">
+  <defs>
+
+    <!-- Gradient bijou : blanc lumineux → bleu Tezos → bleu nuit -->
+    <linearGradient id="jewel" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%"   stop-color="#FFFFFF"/>
+      <stop offset="18%"  stop-color="#90C8FF"/>
+      <stop offset="55%"  stop-color="#2C7DF7"/>
+      <stop offset="100%" stop-color="#082E80"/>
+    </linearGradient>
+
+    <!-- Halo diffus sous le bijou -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#2C7DF7" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#2C7DF7" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Filtre éclat : double halo bleu autour du logo Tezos -->
+    <filter id="shine" x="-70%" y="-70%" width="240%" height="240%">
+      <feFlood flood-color="#2C7DF7" result="color"/>
+      <feComposite in="color" in2="SourceGraphic" operator="in" result="src"/>
+      <feGaussianBlur in="src" stdDeviation="3"  result="halo1"/>
+      <feGaussianBlur in="src" stdDeviation="9"  result="halo2"/>
+      <feMerge>
+        <feMergeNode in="halo2"/>
+        <feMergeNode in="halo1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+  </defs>
+
+  <!-- ═══ Diamant Ethereum (présentoir) ══════════════════════════════════ -->
+  <!-- Facette haut-gauche (reflet clair) -->
+  <polygon points="100,82 30,178 100,151"          fill="#B0BCEF"/>
+  <!-- Facette haut-droite (ton moyen) -->
+  <polygon points="100,82 170,178 100,151"          fill="#7B8ED9"/>
+  <!-- Rhombe central -->
+  <polygon points="30,178 100,151 170,178 100,207"  fill="#627EEA"/>
+  <!-- Facette bas-gauche (ombre) -->
+  <polygon points="30,178 100,276 100,207"           fill="#3D55B5"/>
+  <!-- Facette bas-droite (reflet moyen) -->
+  <polygon points="170,178 100,276 100,207"          fill="#8A97D5"/>
+
+  <!-- ═══ Halo sous le bijou (centre du losange central) ══════════════ -->
+  <ellipse cx="100" cy="178" rx="22" ry="7" fill="url(#glow)"/>
+
+  <!-- ═══ Logo Tezos (bijou) — bas aligné sur le centre du losange y=178 -->
+  <!-- scale = 44.5 / 1169.87 ≈ 0.038  →  hauteur = 1593 × 0.038 ≈ 60.5px -->
+  <!-- centré x : 100 − 44.5/2 ≈ 78 ; translate y = 178 − 60.5 ≈ 117      -->
+  <g transform="translate(78,117) scale(0.038)" filter="url(#shine)">
+    <path fill="url(#jewel)"
+      d="M755.68,1593q-170.51,0-248.91-82.14a253.6,253.6,0,0,1-78.15-177,117.39,
+         117.39,0,0,1,13.69-58.5A101.21,101.21,0,0,1,479.64,1238a130.22,130.22,0,
+         0,1,116.24,0A99.55,99.55,0,0,1,633,1275.36a115,115,0,0,1,14.18,58.5,
+         111.73,111.73,0,0,1-19.91,68.45,92.78,92.78,0,0,1-47.31,34.62,129.18,
+         129.18,0,0,0,74.67,46.55,370,370,0,0,0,101.8,14.68,226.91,226.91,0,0,0,
+         128.19-38.33,224,224,0,0,0,83.63-113.25,492,492,0,0,0,27.38-169.5,465.07,
+         465.07,0,0,0-29.87-176.23,217.54,217.54,0,0,0-86.37-109.52,229.68,229.68,
+         0,0,0-124.43-35.59,236.75,236.75,0,0,0-107.78,36.59L567.26,932.4V892.33
+         L926.43,410.5H428.62v500A178.9,178.9,0,0,0,456,1012.8a94.34,94.34,0,0,0,
+         83.63,40.07,139.85,139.85,0,0,0,82.63-29.12,298.38,298.38,0,0,0,69.2-71.19,
+         24.86,24.86,0,0,1,9-11.94,18.4,18.4,0,0,1,12-4.48,41.55,41.55,0,0,1,23.4,
+         9.95,49.82,49.82,0,0,1,12.69,33.85,197.86,197.86,0,0,1-4.48,24.89,241,241,
+         0,0,1-85.38,106,211.78,211.78,0,0,1-119.76,36.38q-161.67,0-224-63.72
+         A238.67,238.67,0,0,1,253.2,909.25V410.5H0V317.6H254.38V105.78L196.14,47.5V0
+         h169l63.48,32.86V317.6l657.6-2,65.47,65.71L748.46,786.5a271,271,0,0,1,
+         76.16-18.42A330.1,330.1,0,0,1,972,810.15a302.7,302.7,0,0,1,126.95,113.29,
+         399.78,399.78,0,0,1,57.25,136.65,575.65,575.65,0,0,1,13.69,117,489.39,
+         489.39,0,0,1-49.78,216.79,317.92,317.92,0,0,1-149.35,149.35A483.27,483.27,
+         0,0,1,755.68,1593Z"/>
+  </g>
+
+</svg>
