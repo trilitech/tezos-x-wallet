@@ -2,29 +2,15 @@ import {
   DAppClient,
   BeaconEvent,
   NetworkType,
+  SigningType,
   TezosOperationType,
   type AccountInfo,
   type MichelineMichelsonV1Expression,
 } from '@airgap/beacon-sdk';
 import { TEZOS_L1_RPC, CRAC_CONTRACT } from './constants.js';
+import { stringToHex, formatTezosSignatureAsEVM } from './utils/siwe.js';
+import { beaconError, isUserAbort, EIP1193_USER_REJECTED, JSON_RPC_INTERNAL } from './utils/errors.js';
 import type { BeaconPermissions } from './types.js';
-
-const EIP1193_USER_REJECTED = 4001;
-const JSON_RPC_INTERNAL = -32603;
-
-function beaconError(code: number, message: string): Error & { code: number } {
-  const err = new Error(message) as Error & { code: number };
-  err.code = code;
-  return err;
-}
-
-function isUserAbort(err: unknown): boolean {
-  if (err instanceof Error) {
-    const msg = err.message.toLowerCase();
-    return msg.includes('aborted') || msg.includes('rejected') || msg.includes('dismiss');
-  }
-  return false;
-}
 
 export class BeaconClient {
   private readonly client: DAppClient;
@@ -115,6 +101,44 @@ export class BeaconClient {
         throw beaconError(EIP1193_USER_REJECTED, 'User rejected the transaction');
       }
       throw beaconError(JSON_RPC_INTERNAL, `Beacon sendContractCall failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Sign an arbitrary message via Temple's requestSignPayload.
+   *
+   * ⚠️ Requires a tz2 account (secp256k1). tz1 accounts use Ed25519, which
+   * is incompatible with Ethereum's ecrecover — SIWE verification will fail.
+   */
+  async signMessage(message: string, address: string): Promise<string> {
+    if (!address.startsWith('tz2')) {
+      throw beaconError(
+        EIP1193_USER_REJECTED,
+        `[TezosX Relayer] personal_sign requires a tz2 account (secp256k1). ` +
+        `Your current account (${address}) uses Ed25519 (tz1) which is incompatible ` +
+        `with Ethereum signature verification. Please switch to a tz2 account in Temple.`,
+      );
+    }
+
+    try {
+      const hex = stringToHex(message);
+      const response = await this.client.requestSignPayload({
+        signingType: SigningType.RAW,
+        payload: hex.slice(2), // Beacon expects hex without 0x prefix
+      });
+      return formatTezosSignatureAsEVM(response.signature);
+    } catch (err) {
+      if (isUserAbort(err)) {
+        throw beaconError(EIP1193_USER_REJECTED, 'User rejected the sign request');
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('No server responded') || msg.toLowerCase().includes('network')) {
+        throw beaconError(
+          EIP1193_USER_REJECTED,
+          'Temple Wallet not reachable. Make sure the Temple extension is installed and unlocked.',
+        );
+      }
+      throw beaconError(JSON_RPC_INTERNAL, `Beacon signMessage failed: ${msg}`);
     }
   }
 

@@ -3,30 +3,23 @@ import { BeaconClient } from './beacon.js';
 import { TezlinkClient } from './tezlink.js';
 import { GatewayBuilder } from './gateway.js';
 import { deriveEvmAlias } from './utils/derive.js';
+import { hexToString } from './utils/siwe.js';
 import { l1OpHashToEvmHash, buildSyntheticReceipt } from './utils/receipt.js';
+import {
+  rpcError,
+  EIP1193_UNAUTHORIZED,
+  EIP1193_UNSUPPORTED_METHOD,
+  JSON_RPC_METHOD_NOT_FOUND,
+  JSON_RPC_INVALID_PARAMS,
+} from './utils/errors.js';
 import type {
   EIP1193Provider,
   RequestArguments,
-  ProviderRpcError,
   ProviderConnectInfo,
   RelayerSession,
   PendingOp,
   EthTransactionRequest,
 } from './types.js';
-
-// ── EIP-1193 error codes ───────────────────────────────────────────────────
-
-const EIP1193_UNAUTHORIZED       = 4100;
-const EIP1193_UNSUPPORTED_METHOD = 4200;
-const JSON_RPC_METHOD_NOT_FOUND  = -32601;
-const JSON_RPC_INVALID_PARAMS    = -32602;
-
-function rpcError(code: number, message: string, data?: unknown): ProviderRpcError {
-  const err = new Error(message) as ProviderRpcError;
-  (err as { code: number }).code = code;
-  if (data !== undefined) (err as { data: unknown }).data = data;
-  return err;
-}
 
 // ── RelayerProvider ────────────────────────────────────────────────────────
 
@@ -113,9 +106,13 @@ export class RelayerProvider extends EventEmitter implements EIP1193Provider {
       case 'wallet_disconnect':
         return this.handleDisconnect();
 
-      // Explicitly unsupported in V1
-      case 'eth_sign':
       case 'personal_sign':
+        return this.handlePersonalSign(args);
+
+      case 'eth_sign':
+        return this.handleEthSign(args);
+
+      // Explicitly unsupported in V1
       case 'eth_signTypedData':
       case 'eth_signTypedData_v3':
       case 'eth_signTypedData_v4':
@@ -231,6 +228,20 @@ export class RelayerProvider extends EventEmitter implements EIP1193Provider {
     if (pending == null) return null;
 
     return buildSyntheticReceipt(syntheticHash, pending.from, pending.to);
+  }
+
+  private async handlePersonalSign(args: RequestArguments): Promise<string> {
+    if (this.session == null) throw rpcError(EIP1193_UNAUTHORIZED, 'Call eth_requestAccounts first');
+    const [messageHex] = args.params as [string, string];
+    if (typeof messageHex !== 'string') throw rpcError(JSON_RPC_INVALID_PARAMS, 'personal_sign: expected [messageHex, address]');
+    return this.beacon.signMessage(hexToString(messageHex), this.session.tz1Address);
+  }
+
+  private async handleEthSign(args: RequestArguments): Promise<string> {
+    if (this.session == null) throw rpcError(EIP1193_UNAUTHORIZED, 'Call eth_requestAccounts first');
+    const [, messageHex] = args.params as [string, string];
+    if (typeof messageHex !== 'string') throw rpcError(JSON_RPC_INVALID_PARAMS, 'eth_sign: expected [address, messageHex]');
+    return this.beacon.signMessage(hexToString(messageHex), this.session.tz1Address);
   }
 
   private async handleDisconnect(): Promise<null> {

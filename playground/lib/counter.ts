@@ -1,4 +1,4 @@
-export const COUNTER_ADDRESS = '0x3af54710DC3bdc73922F3435876396372DDC18Fc';
+export const COUNTER_ADDRESS = '0xBF1e9438e8e674CBCc5944613317BA4E84bCF52B';
 export const TEZLINK_EVM_RPC = 'https://demo.txpark.nomadic-labs.com/rpc';
 
 export const SELECTORS = {
