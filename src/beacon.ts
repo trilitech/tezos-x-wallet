@@ -96,7 +96,10 @@ export class BeaconClient {
             kind: TezosOperationType.TRANSACTION,
             amount: mutezAmount,
             fee: "100000",          // 0.1 XTZ — safe ceiling for cross-runtime ops (Temple re-estimates)
-            gas_limit: "1040000",   // High ceiling for NAC call_evm (Temple simulates & adjusts)
+            // Tezos X demo has hard_gas_limit_per_block == hard_gas_limit_per_operation == 1_040_000.
+            // A first-tx op group also includes a reveal (~633 gas), so 1_040_000 here would overflow
+            // the block limit and trigger gas_limit_too_high. Leave headroom for reveal + safety.
+            gas_limit: "1000000",
             storage_limit: "60000", // Allows storage allocation via NAC gateway
             destination: NAC_CONTRACT,
             parameters: {
