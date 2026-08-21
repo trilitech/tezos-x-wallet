@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
     marginLeft: -4,
   },
   backPressed: { backgroundColor: colors.surface2 },
-  title: { fontSize: fontSize.lg, fontWeight: '600', letterSpacing: -0.17 },
+  title: { fontSize: fontSize.lg, fontWeight: '600', letterSpacing: -0.17, color: colors.fg },
   center: { flex: 1, alignItems: 'center' },
   centerText: { fontSize: fontSize.lg, fontWeight: '600', letterSpacing: -0.17, color: colors.fg },
   grow: { flex: 1 },

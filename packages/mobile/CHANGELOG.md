@@ -7,6 +7,61 @@ shared `@tezosx/wallet-core` over the workspace; only platform adapters
 
 ## [0.7.0] — 2026-08-19
 
+### Added
+- **`expo-dev-client` and an explicit `tezosx` URL scheme**, so the dev loop
+  targets the development build instead of Expo Go. `npx expo start` now
+  launches the real app (Expo Go cannot load the Nitro/MMKV/Keychain native
+  modules at all, and Expo Go for SDK 56 is not published on the stores),
+  and the dev-client launcher lets a **physical device** point at any Metro
+  server by URL — previously the server address was baked into the device
+  build at compile time, so every network change meant a full rebuild. The
+  scheme also repairs the QR/terminal launch: with both native projects
+  present, the CLI intersects their URL schemes, and Android had none.
+
+### Security
+- **Biometric unlock actually works.** iOS requires an `NSFaceIDUsageDescription`
+  purpose string before an app may evaluate a biometric policy; the app never
+  declared one, so `getSupportedBiometryType()` resolved null, the wallet
+  concluded the device had no biometrics, and no Face ID prompt was ever shown —
+  on any device. It was invisible in development because an unenrolled
+  simulator returns that same null. The string is now declared, so Face ID
+  unlocks the vault and gates transfer/approval confirmation as designed.
+- The app no longer requests microphone or audio-recording access. Those came
+  from `expo-camera`'s defaults; the camera is used only to scan WalletConnect
+  QR codes, and a wallet should not ask for permissions it never exercises.
+
+### Fixed
+- **Token balances update when switching accounts.** Switching never asked for
+  the new account's EVM address to be resolved, and the ERC-20 reads are
+  skipped while it is unknown — so the token rows of an account whose address
+  had never been resolved stayed on a dash indefinitely, with nothing to heal
+  them. The switch now triggers that resolution, as the extension already did.
+- Activity could be stored under the wrong account. The read used whichever
+  account's session happened to be warm at that moment while labelling the
+  result with the newly selected account, so one account's history could be
+  persisted as another's; the read now waits for the session that actually
+  belongs to the account being read.
+- A failure while warming the new account's session no longer prevents the
+  switch from being persisted — reopening the wallet could land back on the
+  previous account.
+- **Step titles are readable.** The header title of the onboarding and
+  add-account flows had no colour of its own, so it rendered in the platform
+  default — black on the dark background, i.e. invisible. The transaction hash
+  on the send confirmation screen was invisible for the same reason.
+- **The keyboard no longer hides the password field.** The unlock screen's
+  scroll body had no keyboard handling and no scroll range, so the field being
+  typed into sat behind the keyboard with no way to reach it. Screens that host
+  a text input now use a shared scroll primitive that insets itself by the
+  keyboard's measured overlap, and bottom sheets lift above it — which also
+  fixes the six sheet inputs (change password, reveal secret, remove account,
+  rename contact, dApp URI) that were covered the same way. A first tap on a
+  button while the keyboard is up now registers instead of being swallowed by
+  the dismissal.
+- The lock screen offers biometric unlock as soon as the seal exists. Whether
+  biometrics were available was read once at startup, so a wallet created or
+  reset in the same session showed no biometric option until the app was
+  relaunched — and after a reset the option lingered over a cleared seal.
+
 ### Security
 - **The approval screen shows the origin's scheme.** The dApp origin was
   reduced to its bare hostname, so `http://victim.example` was

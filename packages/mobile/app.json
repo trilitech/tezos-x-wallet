@@ -2,13 +2,17 @@
   "expo": {
     "name": "mobile",
     "slug": "mobile",
+    "scheme": "tezosx",
     "version": "0.7.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tezosx.walletmobile"
+      "bundleIdentifier": "com.tezosx.walletmobile",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Tezos X uses Face ID to unlock your wallet and confirm transfers."
+      }
     },
     "android": {
       "package": "com.tezosx.walletmobile",
@@ -28,7 +32,9 @@
         "expo-camera",
         {
           "cameraPermission": "Tezos X uses the camera to scan a dApp's WalletConnect QR code.",
-          "barcodeScannerEnabled": true
+          "barcodeScannerEnabled": true,
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       "react-native-quick-crypto",
