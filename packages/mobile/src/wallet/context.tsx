@@ -171,7 +171,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }): Rea
       const s = await vaultActions.bootState();
       if (!live) return;
       setVaultState(s);
-      setBioAvailable(await vaultActions.biometricsAvailable());
       if (s.status === 'unlocked') {
         await deps.rebuildContainer();
         vaultActions.kickAliasBackfill(() => { void refresh(); });
@@ -180,6 +179,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }): Rea
     })();
     return () => { live = false; };
   }, [refresh]);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const available = await vaultActions.biometricsAvailable();
+      if (live) setBioAvailable(available);
+    })();
+    return () => { live = false; };
+  }, [vault]);
 
   // Single NetInfo subscription for the whole app. Only a definite "not
   // connected" counts as offline (unknown stays online — the reads decide).
@@ -284,14 +292,24 @@ export function WalletProvider({ children }: { children: React.ReactNode }): Rea
         ? { status: 'unlocked', kind: 'tezos', accountId: id, tz1: target.primaryAddress, evmAlias: target.secondaryAddress ?? null, accounts: s.accounts, hasSeed: s.hasSeed }
         // An EVM summary's primaryAddress is always a 0x address (the account's own).
         : { status: 'unlocked', kind: 'evm', accountId: id, address: target.primaryAddress as `0x${string}`, accounts: s.accounts, hasSeed: s.hasSeed });
+      // A tz1 whose EVM alias was never resolved has none in its summary, and
+      // the ERC-20 reads are skipped while it is null — so without this kick the
+      // token rows of a switched-to account stay on a dash for good. The
+      // extension gets this free (the worker re-kicks on every state read).
+      vaultActions.kickAliasBackfill(() => { void refresh(); });
       void (async () => {
-        await deps.rebuildContainer();   // warm the container for reads (key derivation is negligible + cached per account)
+        // A container failure must not skip the flush below: the pointer is
+        // what makes the switch survive a lock, and the container is rebuilt
+        // lazily by the next read or send anyway.
+        try {
+          await deps.rebuildContainer();   // warm the container for reads (key derivation is negligible + cached per account)
+        } catch { /* rebuilt on demand */ }
         setDataNonce((n) => n + 1);      // re-run the reads (activity) now the container is warm
         // No dApp notification: switching the active account (for the user's own
         // Send/Receive) does not change what a connected dApp sees — each origin
         // stays bound to the account it connected with. Re-pointing every session
         // to the active account was the SEC-1 leak.
-        await keyring.flushActive();     // persist the active pointer off the tap (cheap now crypto is native) so it survives a lock
+        await keyring.flushActive().catch(() => { /* re-persisted on the next write */ });
       })();
     },
     lock,

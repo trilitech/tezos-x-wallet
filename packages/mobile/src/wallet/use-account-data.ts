@@ -168,9 +168,12 @@ export function useAccountData(active: VaultStateUnlocked | null, nonce: number)
       }
     })();
 
-    // Activity needs the warm container for the active account. The provider
-    // rebuilds it on unlock / switch before this effect re-runs, so a null here
-    // means "not ready yet" — the snapshot (if any) stays on screen.
+    // Activity needs the warm container for the active account. The rebuild
+    // runs concurrently with this effect, so the slot can still hold the
+    // PREVIOUS account's container — reading through it while stamping the
+    // result with this account's id would persist one account's feed under
+    // another's snapshot key. Anything but a container that belongs to this
+    // account counts as "not ready yet" and leaves the snapshot on screen.
     setActivity((s) => ({ data: keepPrev ? s.data : null, loading: true, error: null, stale: keepPrev ? s.stale : null }));
     void (async () => {
       const snap = await activitySnapP;
@@ -182,7 +185,7 @@ export function useAccountData(active: VaultStateUnlocked | null, nonce: number)
       }
 
       const container = deps.state.container;
-      if (container == null) {
+      if (container == null || container.signer.account.id !== accountId) {
         if (!live) return;
         setActivity((s) => (s.data != null
           ? { ...s, loading: false }

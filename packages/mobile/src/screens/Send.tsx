@@ -627,7 +627,9 @@ export function Send(_props: { params?: Record<string, unknown> } = {}): React.J
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0, backgroundColor: colors.bg },
   scroll: { flex: 1, minHeight: 0 },
-  mono: { fontFamily: font.mono, letterSpacing: -0.1 },
+  // Line renders a non-string value raw, so this style stands alone and must
+  // carry its own colour — nothing above it to inherit from.
+  mono: { fontFamily: font.mono, letterSpacing: -0.1, color: colors.fg },
 
   formScroll: { paddingTop: 6, paddingHorizontal: 16, paddingBottom: 16 },
   reviewScroll: { padding: 16 },

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { formatError, isAuthError, type FormattedError } from '@tezosx/wallet-core/domain/error';
 import { colors, fontSize, radius, space } from '../theme';
 import { useWallet } from '../wallet/context';
@@ -17,6 +17,7 @@ import { Btn } from '../ui/tx/Btn';
 import { Check } from '../ui/tx/Check';
 import { ErrorCard } from '../ui/tx/ErrorCard';
 import { ErrorInline } from '../ui/tx/ErrorInline';
+import { KeyboardScroll } from '../ui/tx/KeyboardScroll';
 import { Sheet } from '../ui/tx/Sheet';
 import { Icon } from '../ui/icon';
 import { LogoMark } from '../ui/tx/LogoMark';
@@ -63,7 +64,7 @@ export function Unlock(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <KeyboardScroll contentContainerStyle={styles.scroll}>
         <View style={styles.hero}>
           <LogoMark size={56} />
           <View style={styles.pitch}>
@@ -113,7 +114,7 @@ export function Unlock(): React.JSX.Element {
         <Pressable onPress={() => setRecover(true)} style={styles.forgot}>
           <Text style={styles.forgotText}>Forgot password? Reset wallet and re-import</Text>
         </Pressable>
-      </ScrollView>
+      </KeyboardScroll>
 
       {recover && <RecoverySheet onClose={() => setRecover(false)} />}
     </View>
