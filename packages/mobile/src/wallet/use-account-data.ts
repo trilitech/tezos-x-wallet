@@ -28,6 +28,7 @@ import {
   fetchErc20Balance,
 } from '@tezosx/wallet-core/adapters/tezos/tezos-balance-fetcher';
 import { listRegisteredTokens } from '@tezosx/wallet-core/use-cases/list-registered-tokens';
+import { readBalances } from '@tezosx/wallet-core/use-cases/read-balances';
 import { listActivity } from '@tezosx/wallet-core/use-cases/list-activity';
 import { tokenStore, deps, snapshotStore } from '../composition/wiring';
 import { toActivityRowVM, type ActivityRowVM } from './activity-vm';
@@ -69,13 +70,30 @@ export interface AccountData {
 
 const IDLE = { data: null, loading: false, error: null, stale: null } as const;
 
+/** Base-unit token amounts → the decimal strings the screens render. A token
+ *  the read omitted (its own fetch failed) has no entry and stays a dash. */
+function formatTokens(
+  erc20: Record<string, string>,
+  tokens: RegisteredToken[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of tokens) {
+    const raw = erc20[t.address.toLowerCase()];
+    if (raw != null) out[t.address.toLowerCase()] = formatTokenAmount(raw, t.decimals);
+  }
+  return out;
+}
+
 /** Map a persisted balances snapshot to the view shape. null when the
- *  snapshot never held a native balance — there is nothing honest to show. */
+ *  snapshot never held a native balance — there is nothing honest to show.
+ *  Token amounts are persisted in base units, so the registry's decimals are
+ *  needed to render them. */
 export function balancesSnapshotToView(
-  snap: SnapshotEntry<BalancesSnapshotData> | null,
+  snap:   SnapshotEntry<BalancesSnapshotData> | null,
+  tokens: RegisteredToken[],
 ): BalancesView | null {
   if (snap == null || snap.data.xtz == null) return null;
-  return { xtz: snap.data.xtz, tokens: snap.data.erc20 };
+  return { xtz: snap.data.xtz, tokens: formatTokens(snap.data.erc20, tokens) };
 }
 
 export function useAccountData(active: VaultStateUnlocked | null, nonce: number): AccountData {
@@ -112,58 +130,62 @@ export function useAccountData(active: VaultStateUnlocked | null, nonce: number)
     setBalances((s) => ({ data: keepPrev ? s.data : null, loading: true, error: null, stale: keepPrev ? s.stale : null }));
     setTokens((s) => ({ data: keepPrev ? s.data : null, loading: true, error: null, stale: null }));
 
-    // Tokens + balances: the registry is fetched first so we know which ERC-20
-    // balances to read; a failing token balance falls back to '0' without
-    // failing the whole read (the native balance still resolves).
+    // Tokens + balances. The registry comes first: it is a local read, it says
+    // which ERC-20 to fetch, and its decimals are what turn the cached
+    // base-unit amounts into something renderable.
     void (async () => {
-      const snap = await balancesSnapP;
-      const snapView = balancesSnapshotToView(snap);
-      // Surface the cached values immediately, stamped with their age, while
-      // the live read runs — but never over data already on screen.
-      if (live && snapView != null && snap != null) {
-        setBalances((s) => (s.data == null ? { data: snapView, loading: true, error: null, stale: { fetchedAt: snap.fetchedAt } } : s));
-      }
+      let snapView: BalancesView | null = null;
+      let snapAt:   number | null       = null;
       try {
         const list = await listRegisteredTokens({ accountId }, { tokenStore });
         if (!live) return;
         setTokens({ data: list, loading: false, error: null, stale: null });
 
-        const rawXtz = active.kind === 'tezos'
-          ? await fetchL1XtzBalance(active.tz1)
-          : await fetchXtzBalance(active.address);
-        const xtz = active.kind === 'tezos' ? mutezToXtz(rawXtz) : weiToXtz(rawXtz);
-
-        const tokenBalances: Record<string, string> = {};
-        if (holder != null) {
-          await Promise.all(list.map(async (t) => {
-            try {
-              tokenBalances[t.address.toLowerCase()] = formatTokenAmount(
-                await fetchErc20Balance(t.address, holder),
-                t.decimals,
-              );
-            } catch {
-              tokenBalances[t.address.toLowerCase()] = '0';
-            }
-          }));
-        }
+        // Surface the cached values immediately, stamped with their age, while
+        // the live read runs — but never over data already on screen.
+        const snap = await balancesSnapP;
         if (!live) return;
-        setBalances({ data: { xtz, tokens: tokenBalances }, loading: false, error: null, stale: null });
-        // Write-back: this fresh read becomes the offline fallback. Skipped
-        // while the alias is unresolved and tokens are registered — the ERC-20
-        // half was never read, and overwriting a complete snapshot with half a
-        // read would lose data.
-        if (holder != null || list.length === 0) {
-          void snapshotStore.saveBalances(accountId, { data: { xtz, erc20: tokenBalances }, fetchedAt: Date.now() })
-            .catch(() => { /* best-effort persistence */ });
+        snapView = balancesSnapshotToView(snap, list);
+        snapAt   = snap?.fetchedAt ?? null;
+        if (snapView != null && snapAt != null) {
+          const view = snapView, at = snapAt;
+          setBalances((s) => (s.data == null ? { data: view, loading: true, error: null, stale: { fetchedAt: at } } : s));
         }
+
+        // The read, its unit conversions, its per-token failure handling and
+        // its snapshot write-back all live in core, shared with the extension.
+        // The result carries the account it belongs to, so a switch that lands
+        // mid-flight is dropped structurally rather than by remembering to.
+        const read = await readBalances({
+          accountId,
+          kind:          active.kind,
+          nativeAddress: active.kind === 'tezos' ? active.tz1 : active.address,
+          erc20Holder:   holder,
+          tokens:        list,
+        }, {
+          snapshotStore,
+          fetchNative: async (addr) => BigInt(active.kind === 'tezos'
+            ? await fetchL1XtzBalance(addr)
+            : await fetchXtzBalance(addr)),
+          fetchErc20:  async (t, h) => BigInt(await fetchErc20Balance(t, h)),
+        });
+        if (!live || read.accountId !== dataOwnerRef.current) return;
+        if (read.error != null) throw read.error;
+
+        setBalances({
+          data:    { xtz: read.xtz ?? '0', tokens: formatTokens(read.erc20, list) },
+          loading: false,
+          error:   null,
+          stale:   read.fromSnapshot && read.fetchedAt != null ? { fetchedAt: read.fetchedAt } : null,
+        });
       } catch (e) {
         if (!live) return;
         const fe = formatError(e);
         setTokens((s) => ({ data: s.data, loading: false, error: fe, stale: null }));
         // Failure keeps the last-known values (labeled by `stale`) when a
         // snapshot exists; without one this is the plain no-data failure.
-        setBalances(snapView != null && snap != null
-          ? { data: snapView, loading: false, error: fe, stale: { fetchedAt: snap.fetchedAt } }
+        setBalances(snapView != null && snapAt != null
+          ? { data: snapView, loading: false, error: fe, stale: { fetchedAt: snapAt } }
           : { data: null, loading: false, error: fe, stale: null });
       }
     })();

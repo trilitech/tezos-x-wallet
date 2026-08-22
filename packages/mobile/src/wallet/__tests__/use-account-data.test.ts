@@ -18,22 +18,33 @@ vi.mock('../../composition/wiring', () => ({
 
 import { balancesSnapshotToView } from '../use-account-data';
 
+const TOKEN = {
+  address: '0xtoken', symbol: 'USDC', name: 'USD Coin', decimals: 6, addedAt: 0,
+};
+
 describe('balancesSnapshotToView', () => {
-  it('maps a full snapshot to the view shape', () => {
+  it('scales the persisted base-unit token amounts by the registry decimals', () => {
     expect(balancesSnapshotToView({
-      data:      { xtz: '12.5', erc20: { '0xtoken': '3.14' } },
+      data:      { xtz: '12.5', erc20: { '0xtoken': '3140000' } },
       fetchedAt: 1_753_000_000_000,
-    })).toEqual({ xtz: '12.5', tokens: { '0xtoken': '3.14' } });
+    }, [TOKEN])).toEqual({ xtz: '12.5', tokens: { '0xtoken': '3.14' } });
+  });
+
+  it('omits a token that has no persisted amount (it stays a dash)', () => {
+    expect(balancesSnapshotToView({
+      data:      { xtz: '12.5', erc20: {} },
+      fetchedAt: 1_753_000_000_000,
+    }, [TOKEN])).toEqual({ xtz: '12.5', tokens: {} });
   });
 
   it('a missing snapshot maps to null', () => {
-    expect(balancesSnapshotToView(null)).toBeNull();
+    expect(balancesSnapshotToView(null, [TOKEN])).toBeNull();
   });
 
   it('a snapshot that never held a native balance maps to null (nothing honest to show)', () => {
     expect(balancesSnapshotToView({
       data:      { xtz: null, erc20: {} },
       fetchedAt: 1_753_000_000_000,
-    })).toBeNull();
+    }, [])).toBeNull();
   });
 });

@@ -10,6 +10,21 @@ Chrome extension (`@tezosx/wallet`) and the React Native app
 ## [0.9.0] — 2026-08-19
 
 ### Added
+- **`use-cases/read-balances.ts` — the one account-scoped balance read**, now
+  shared by both shells. Every result carries the `accountId` it was read for,
+  which turns the guard each shell was supposed to remember into a structural
+  one: a caller compares the stamp with the account on screen and drops a
+  superseded read. Both shells previously hand-rolled this in their UI, and
+  neither carried the identity — which is how switching accounts could leave
+  the previous account's balance rendered. The use-case owns the unit
+  conversion, the read-through against the snapshot store, the write-back and
+  the failure fallback, so the two shells can no longer drift. Where they had
+  diverged, the honest behaviour won: a token whose own read fails is omitted
+  rather than recorded as zero (a zero is indistinguishable from an empty
+  wallet), and the write-back merges over the previous snapshot so a read with
+  an unresolved alias cannot erase cached token values. Token amounts are
+  persisted in base units, with an amount an older build stored pre-formatted
+  discarded on read so the next live read replaces it.
 - **`shared/amounts.ts`** — the write direction of unit math, previously
   duplicated inside both shells' Send screens: `parseTokenAmount` (typed
   decimal → 0x base-units hex, the counterpart of `formatTokenAmount`),

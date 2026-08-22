@@ -21,7 +21,12 @@ import type {
 import type { AccountId } from '@tezosx/wallet-core/domain/account';
 import { ChromeSnapshotStore } from './chrome-snapshot-store';
 
-const store = new ChromeSnapshotStore();
+/** The store itself, for core use-cases that take the SnapshotStore port
+ *  (readBalances read-through + write-back). The helpers below stay for the
+ *  call sites that only need one entry. */
+export const popupSnapshotStore = new ChromeSnapshotStore();
+
+const store = popupSnapshotStore;
 
 export async function loadBalancesSnapshot(
   accountId: AccountId,

@@ -8,9 +8,10 @@ import {
   fetchErc20Balance,
 } from '@tezosx/wallet-core/adapters/tezos/tezos-balance-fetcher';
 import { FAUCET_URL } from '@tezosx/wallet-core/shared/constants';
-import { formatBalanceDisplay, mutezToXtz, timeAgo, weiToXtz } from '@tezosx/wallet-core/shared/format';
+import { formatBalanceDisplay, timeAgo } from '@tezosx/wallet-core/shared/format';
+import { cachedBalances, readBalances } from '@tezosx/wallet-core/use-cases/read-balances';
 import { sendPopupRequest } from '@/shared/messaging';
-import { loadBalancesSnapshot, saveBalancesSnapshot } from '@/adapters/chrome/popup-snapshot-store';
+import { popupSnapshotStore } from '@/adapters/chrome/popup-snapshot-store';
 import { unreachableTitle, useOnline } from '../hooks/use-online';
 import { ActivityStaleBand } from '../tx/ActivityStaleBand';
 import { formatError } from '@tezosx/wallet-core/domain/error';
@@ -61,71 +62,55 @@ export function Home({ state, onChanged }: { state: VaultState; onChanged: () =>
     if (paintedForRef.current !== accountId) return;
     const run  = ++runIdRef.current;
     const mine = (): boolean => runIdRef.current === run;
-    const xtzAddress = state.kind === 'tezos' ? state.tz1     : state.address;
-    const evmAddress = state.kind === 'tezos' ? state.evmAlias : state.address;
-
-    const xtzFetch = state.kind === 'tezos'
-      ? fetchL1XtzBalance(xtzAddress).then(mutezToXtz)
-      : fetchXtzBalance(xtzAddress).then(weiToXtz);
 
     const tokens = await sendPopupRequest<RegisteredToken[]>({ type: 'LIST_REGISTERED_TOKENS' }).catch(() => [] as RegisteredToken[]);
     if (!mine()) return;
     setCustomTokens(tokens);
 
-    // The EVM alias of a tz1 account may still be resolving (first unlock, or
-    // offline). Skip the EVM-side ERC-20 reads until it lands — the rows show
-    // a dash — and let the effect below re-run when a state re-poll delivers it.
-    const tokenFetches = evmAddress == null ? [] : tokens.map((t) =>
-      fetchErc20Balance(t.address, evmAddress).then((hex) => [t.address.toLowerCase(), hex] as const),
-    );
+    // The read itself — unit conversion, per-token failure handling, the
+    // snapshot fallback and the write-back — is the shared core use-case, so
+    // the mobile app behaves identically. The alias of a tz1 may still be
+    // resolving: the use-case then skips the ERC-20 reads (the rows show a
+    // dash) and the effect below re-runs when a state re-poll delivers it.
+    const read = await readBalances({
+      accountId,
+      kind:          state.kind,
+      nativeAddress: state.kind === 'tezos' ? state.tz1 : state.address,
+      erc20Holder:   state.kind === 'tezos' ? state.evmAlias : state.address,
+      tokens,
+    }, {
+      snapshotStore: popupSnapshotStore,
+      fetchNative: async (addr) => BigInt(state.kind === 'tezos'
+        ? await fetchL1XtzBalance(addr)
+        : await fetchXtzBalance(addr)),
+      fetchErc20:  async (t, h) => BigInt(await fetchErc20Balance(t, h)),
+    });
+    if (!mine()) return;
 
-    const [xtzRes, ...tokenRes] = await Promise.allSettled([
-      xtzFetch,
-      ...tokenFetches,
-    ]);
-
-    const liveBalances: Record<string, string> = {};
-    for (const r of tokenRes) {
-      if (r.status === 'fulfilled') liveBalances[r.value[0]] = r.value[1];
-    }
-
-    if (xtzRes.status === 'fulfilled') {
-      if (mine()) {
-        setXtz(xtzRes.value);
-        setTokenBalances(liveBalances);
-        setCachedAt(null);
-        setBandDismissed(false);
-      }
-      // The write-back stays unconditional: it is keyed by the account this
-      // read belongs to, so persisting it is correct even once superseded.
-      // Write-back: merge the fetched ERC-20 values over the previous
-      // snapshot's map so a run with a still-null alias (ERC-20 reads skipped)
-      // doesn't erase the cached values.
-      const prev = await loadBalancesSnapshot(accountId);
-      void saveBalancesSnapshot(accountId, {
-        data:      { xtz: xtzRes.value, erc20: { ...(prev?.data.erc20 ?? {}), ...liveBalances } },
-        fetchedAt: Date.now(),
-      });
+    if (read.error == null) {
+      setXtz(read.xtz);
+      setTokenBalances(read.erc20);
+      setCachedAt(null);
+      setBandDismissed(false);
       return;
     }
 
-    console.error('[Home] XTZ fetch failed', xtzRes.reason);
+    console.error('[Home] XTZ fetch failed', read.error);
 
-    // Live read failed: fall back to the persisted snapshot when one exists —
-    // last-known values labeled with their age beat a dash.
-    const snap = await loadBalancesSnapshot(accountId);
-    if (!mine()) return;
-    if (snap != null && snap.data.xtz != null) {
-      setXtz(snap.data.xtz);
-      setTokenBalances({ ...snap.data.erc20, ...liveBalances });
-      setCachedAt(snap.fetchedAt);
+    // Live read failed: the use-case already fell back to the persisted
+    // snapshot when one exists — last-known values labeled with their age
+    // beat a dash.
+    if (read.xtz != null) {
+      setXtz(read.xtz);
+      setTokenBalances(read.erc20);
+      setCachedAt(read.fetchedAt);
       return;
     }
 
     setXtz('—');
-    setTokenBalances(liveBalances);
+    setTokenBalances(read.erc20);
     setCachedAt(null);
-    const e = formatError(xtzRes.reason);
+    const e = formatError(read.error);
     errorToast({
       message:   e.title,
       secondary: e.code === 'rpc-unreachable' ? '· network'
@@ -153,11 +138,11 @@ export function Home({ state, onChanged }: { state: VaultState; onChanged: () =>
         setTokenBalances({});
         setCachedAt(null);
         setBandDismissed(false);
-        const snap = await loadBalancesSnapshot(activeAccountId);
+        const cached = await cachedBalances(activeAccountId, { snapshotStore: popupSnapshotStore });
         if (cancelled) return;
-        if (snap != null) {
-          if (snap.data.xtz != null) setXtz(snap.data.xtz);
-          setTokenBalances(snap.data.erc20);
+        if (cached != null) {
+          if (cached.xtz != null) setXtz(cached.xtz);
+          setTokenBalances(cached.erc20);
         }
       }
       if (!cancelled) await refresh();
