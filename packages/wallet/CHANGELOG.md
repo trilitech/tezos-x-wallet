@@ -31,6 +31,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) — versioning 
   view-model already carried the bucket; the list now uses it).
 
 ### Fixed
+- **The balance no longer reverts to the previous account after a switch.**
+  The balance read was issued from outside the effect that owns it, so it
+  could not be cancelled: the account the user had just left finished its
+  read — bounded only by the 15-second network deadline — and repainted its
+  own balance, or its cached value with the "updated N ago" band, over the
+  account now on screen, where it stayed until a manual refresh. Each read
+  now carries a token and only the newest one may write; a read belonging to
+  an account the user has left is dropped, and a retry offered before the
+  switch no longer fires against the wrong account.
 - The fatal-error screen stamped a hardcoded, stale build number; it now
   shows the version injected at build time.
 

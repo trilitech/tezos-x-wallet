@@ -47,10 +47,20 @@ export function Home({ state, onChanged }: { state: VaultState; onChanged: () =>
   // Which account already got its instant cached paint — reset per account so
   // an alias-landing re-run of the effect doesn't repaint stale values.
   const paintedForRef = useRef<AccountId | null>(null);
+  // Monotonic token for the balance reads. Each read takes one and only the
+  // newest may write: a read is bounded by the 15 s RPC deadline, so without
+  // this the account the user just left repaints its own balance — or its
+  // cached snapshot, amber band included — over the account now on screen.
+  const runIdRef = useRef(0);
 
   const refresh = async () => {
     if (state.status !== 'unlocked') return;
     const accountId  = state.accountId;
+    // A retry / reconnect closure captured before a switch belongs to the
+    // account that was active then; it must not even issue the reads.
+    if (paintedForRef.current !== accountId) return;
+    const run  = ++runIdRef.current;
+    const mine = (): boolean => runIdRef.current === run;
     const xtzAddress = state.kind === 'tezos' ? state.tz1     : state.address;
     const evmAddress = state.kind === 'tezos' ? state.evmAlias : state.address;
 
@@ -59,6 +69,7 @@ export function Home({ state, onChanged }: { state: VaultState; onChanged: () =>
       : fetchXtzBalance(xtzAddress).then(weiToXtz);
 
     const tokens = await sendPopupRequest<RegisteredToken[]>({ type: 'LIST_REGISTERED_TOKENS' }).catch(() => [] as RegisteredToken[]);
+    if (!mine()) return;
     setCustomTokens(tokens);
 
     // The EVM alias of a tz1 account may still be resolving (first unlock, or
@@ -79,10 +90,14 @@ export function Home({ state, onChanged }: { state: VaultState; onChanged: () =>
     }
 
     if (xtzRes.status === 'fulfilled') {
-      setXtz(xtzRes.value);
-      setTokenBalances(liveBalances);
-      setCachedAt(null);
-      setBandDismissed(false);
+      if (mine()) {
+        setXtz(xtzRes.value);
+        setTokenBalances(liveBalances);
+        setCachedAt(null);
+        setBandDismissed(false);
+      }
+      // The write-back stays unconditional: it is keyed by the account this
+      // read belongs to, so persisting it is correct even once superseded.
       // Write-back: merge the fetched ERC-20 values over the previous
       // snapshot's map so a run with a still-null alias (ERC-20 reads skipped)
       // doesn't erase the cached values.
@@ -99,6 +114,7 @@ export function Home({ state, onChanged }: { state: VaultState; onChanged: () =>
     // Live read failed: fall back to the persisted snapshot when one exists —
     // last-known values labeled with their age beat a dash.
     const snap = await loadBalancesSnapshot(accountId);
+    if (!mine()) return;
     if (snap != null && snap.data.xtz != null) {
       setXtz(snap.data.xtz);
       setTokenBalances({ ...snap.data.erc20, ...liveBalances });
